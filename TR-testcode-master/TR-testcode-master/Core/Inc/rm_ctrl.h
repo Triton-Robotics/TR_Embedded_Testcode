@@ -29,17 +29,25 @@ extern void imu_temp_pid_ctrl(float feedback, float target);
 
 extern float yaw_imu_pid_ctrl(float feedback, float target);
 
-extern float yaw_ecd_pid_ctrl(float feedback, float target);
+extern float pit_imu_pid_ctrl(float feedback, float target);
 
-extern float pit_ecd_pid_ctrl(float feedback, float target);
+extern float yaw_ecd_cascade_ctrl(float target);
+
+extern float pit_ecd_cascade_ctrl(float target);
 
 extern float yaw_rpm_pid_ctrl(float target);
 
 extern float pit_rpm_pid_ctrl(float target);
 
+extern float yaw_ecd_direct_ctrl(float target);
+
+extern float pit_ecd_direct_ctrl(float target);
+
 extern void gimbal_pid_clear();
 
-extern void wheels_rpm_ctrl_calc(float LF, float LB, float RF, float RB, float arr[]);
+extern void wheels_rpm_ctrl_calc(float LF_speed, float RF_speed, float LB_speed, float RB_speed, float output[]);
+
+extern float chassis_follow_ctrl(float target, float deadzone);
 
 extern float indexer_rpm_ctrl_calc(float target);
 
