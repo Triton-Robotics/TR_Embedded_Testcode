@@ -141,7 +141,7 @@ void PID_clear(pid_type_def *pid)
     pid->fdb = pid->set = 0.0f;
 }
 
-float set_rotation_target(float target, float period)
+float mapPeriod(float target, float period)
 {
 	if (target > period){
 		target = (float) fmod(target, period);

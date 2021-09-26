@@ -94,7 +94,7 @@ extern float PID_calc(pid_type_def *pid, float ref, float set);
   */
 extern void PID_clear(pid_type_def *pid);
 
-extern float set_rotation_target(float target, float period);
+extern float mapPeriod(float target, float period);
 
 extern float get_rotation_actual_error(float feedback, float target, float period);
 
