@@ -21,15 +21,15 @@
 typedef struct
 {
   /* rocker channel information */
-  int16_t ch1;
-  int16_t ch2;
-  int16_t ch3;
-  int16_t ch4;
-  int16_t wheel;
+  int16_t ch1; // right, pos X to right: abs < 660
+  int16_t ch2; // right, pos Y to down: abs < 660
+  int16_t ch3; // left, pos X to right: abs < 660
+  int16_t ch4; // left, pos Y to down: abs < 660
+  int16_t wheel; // abs < 660
 
   /* left and right lever information */
-  uint8_t sw1;
-  uint8_t sw2;
+  uint8_t sw1; // left: 1 - up, 3 - mid, 2 - down
+  uint8_t sw2; // right: 1 - up, 3 - mid, 2 - down
 
 	struct {
 		int16_t x;
