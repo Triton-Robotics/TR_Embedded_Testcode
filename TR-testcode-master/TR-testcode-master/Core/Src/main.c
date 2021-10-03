@@ -43,8 +43,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-//#define INF_2
-#define SENTRY
+#define INF_2
+//#define SENTRY
 
 // default positions
 #define YAW_ECD_DEFAULT (4210)
@@ -69,7 +69,8 @@
 #define MOTOR_BOUNDS 4500
 #define GIMBAL_RPM_LIMIT 3200
 
-
+#define DELAY_MS 5
+#define PI 3.14159265f
 
 /* USER CODE END PD */
 
@@ -296,19 +297,26 @@ void processController(rc_info_t* rcPtr, signal_t* sig){
 	short joyLeftY = (short)(-rcPtr->ch4); // change positive direction to up
 	short joyRightX = (short)(rcPtr->ch1); // positive direction stay at right
 	short joyRightY = (short)(-rcPtr->ch2); // change positive direction to up
-	short joyRotation = 0;
+	short baybladeRPM = DRIVE_SPEED_DEFAULT / 2;
+	short baybladeRotation = 0;
+	// hard coded compensation for yaw motor to rotate
+	float compensation = (23.2f / (60.0f * 1000.0f / DELAY_MS)) * ECD_PERIOD;
 	switch(rcPtr->sw1){
 		case 1: //left up (left stick strafe, right stick bot rotation)
-			joyRotation = joyRightX;
+			//joyRotation = joyRightX;
+			baybladeRotation = - baybladeRPM;
+			sig->gimbal.yaw_ecd -= (short)(joyRightX * JOY_TO_ECD * 0.05f + compensation);
 			sig->gimbal.indexer_speed = 0 * RPM_SCALE;
 			break;
 		case 3: //left middle (left stick strafe, right stick aim)
-			sig->gimbal.yaw_ecd += (short)(joyRightX * JOY_TO_ECD * 0.1f);
+			sig->gimbal.yaw_ecd -= (short)(joyRightX * JOY_TO_ECD * 0.05f);
 			sig->gimbal.indexer_speed = 0 * RPM_SCALE;
 			break;
 		default: // reserve for keyboard
+			baybladeRotation = baybladeRPM;
+			sig->gimbal.yaw_ecd -= (short)(joyRightX * JOY_TO_ECD * 0.05f - compensation);
 			if (rcPtr->sw2 == 1){ // flywheel on
-				sig->gimbal.yaw_ecd += (short)(joyRightX * JOY_TO_ECD * 0.1f);
+				//sig->gimbal.yaw_ecd += (short)(joyRightX * JOY_TO_ECD * 0.05f);
 				sig->gimbal.indexer_speed = INDEXER_SPEED_DEFAULT * RPM_SCALE;
 			}
 			break;
@@ -326,10 +334,19 @@ void processController(rc_info_t* rcPtr, signal_t* sig){
 
 	}
 	sig->gimbal.pitch_ecd += (short)((joyRightY * JOY_TO_ECD) * 0.05f); // pitch don't have the same range as yaw, now limit to 20 degrees
-	sig->chassis.LF_rpm = (short) ((-joyLeftY + joyLeftX + joyRotation) * JOY_TO_RPM * RPM_SCALE * DRIVE_SPEED_DEFAULT);
-	sig->chassis.RF_rpm = (short) ((joyLeftY + joyLeftX + joyRotation) * JOY_TO_RPM * RPM_SCALE * DRIVE_SPEED_DEFAULT);
-	sig->chassis.LB_rpm = (short) ((-joyLeftY - joyLeftX + joyRotation) * JOY_TO_RPM * RPM_SCALE * DRIVE_SPEED_DEFAULT);
-	sig->chassis.RB_rpm = (short) ((joyLeftY - joyLeftX + joyRotation) * JOY_TO_RPM * RPM_SCALE * DRIVE_SPEED_DEFAULT);
+	float raw_x = joyLeftX * JOY_TO_RPM * DRIVE_SPEED_DEFAULT;
+	float raw_y = joyLeftY * JOY_TO_RPM * DRIVE_SPEED_DEFAULT;
+
+	// change of angle from the original position
+	float radian = sig->gimbal.yaw_ecd / ECD_PERIOD * 2 * PI;
+
+	// apply rotational matrix
+	float x = (float) (raw_x * cos(radian) - raw_y * sin(radian));
+	float y = (float) (raw_x * sin(radian) + raw_y * cos(radian));
+	sig->chassis.LF_rpm = (short) ((-y + x + baybladeRotation) * RPM_SCALE);
+	sig->chassis.RF_rpm = (short) ((y + x + baybladeRotation) * RPM_SCALE);
+	sig->chassis.LB_rpm = (short) ((-y - x + baybladeRotation) * RPM_SCALE);
+	sig->chassis.RB_rpm = (short) ((y - x +	baybladeRotation) * RPM_SCALE);
 
 }
 
@@ -480,7 +497,7 @@ int main(void)
 
 	outINF(&signal, &hcan1,	count);
 
-	HAL_Delay(5);
+	HAL_Delay(DELAY_MS);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

@@ -241,9 +241,9 @@ float chassis_follow_ctrl(float target, float deadzone) {
 }
 
 void wheels_rpm_ctrl_calc(float LF_speed, float RF_speed, float LB_speed, float RB_speed, float output[]){
-	PID_calc(&wheels_rpm_pid[0], motors[0].speed_rpm, -LF_speed);
+	PID_calc(&wheels_rpm_pid[0], motors[0].speed_rpm, LF_speed);
 	PID_calc(&wheels_rpm_pid[1], motors[1].speed_rpm, RF_speed);
-	PID_calc(&wheels_rpm_pid[2], motors[2].speed_rpm, -LB_speed);
+	PID_calc(&wheels_rpm_pid[2], motors[2].speed_rpm, LB_speed);
 	PID_calc(&wheels_rpm_pid[3], motors[3].speed_rpm, RB_speed);
 	output[0] = wheels_rpm_pid[0].out;
 	output[1] = wheels_rpm_pid[1].out;
