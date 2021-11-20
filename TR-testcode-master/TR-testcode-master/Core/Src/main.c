@@ -47,8 +47,10 @@
 //#define SENTRY
 
 // default positions
-#define YAW_ECD_DEFAULT (4210)
-#define PIT_ECD_DEFAULT (5350)
+//#define YAW_ECD_DEFAULT (6115)
+//#define PIT_ECD_DEFAULT (5350)
+#define YAW_ECD_DEFAULT (291)
+#define PIT_ECD_DEFAULT (3056)
 #define INDEXER_SPEED_DEFAULT 125
 #define INIT_TIMER_VALUE 15000
 #define YAW_OSCILLATION 750
@@ -124,6 +126,9 @@ typedef struct {
 	} gimbal;
 	short isKB;
 } signal_t;
+float radian;
+float x;
+float y;
 
 signal_t signal;
 
@@ -294,7 +299,7 @@ void processController(rc_info_t* rcPtr, signal_t* sig){
 	//yaw_ecd = 0;
 	//pitch_ecd = 0;
 	short joyLeftX = (short)(rcPtr->ch3); // positive direction stay at right
-	short joyLeftY = (short)(-rcPtr->ch4); // change positive direction to up
+	short joyLeftY = (short)(rcPtr->ch4); // change positive direction to up
 	short joyRightX = (short)(rcPtr->ch1); // positive direction stay at right
 	short joyRightY = (short)(-rcPtr->ch2); // change positive direction to up
 	short baybladeRPM = DRIVE_SPEED_DEFAULT / 2;
@@ -312,7 +317,7 @@ void processController(rc_info_t* rcPtr, signal_t* sig){
 			sig->gimbal.yaw_ecd -= (short)(joyRightX * JOY_TO_ECD * 0.05f);
 			sig->gimbal.indexer_speed = 0 * RPM_SCALE;
 			break;
-		default: // reserve for keyboard
+		case 2: // reserve for keyboard
 			baybladeRotation = baybladeRPM;
 			sig->gimbal.yaw_ecd -= (short)(joyRightX * JOY_TO_ECD * 0.05f - compensation);
 			if (rcPtr->sw2 == 1){ // flywheel on
@@ -320,6 +325,10 @@ void processController(rc_info_t* rcPtr, signal_t* sig){
 				sig->gimbal.indexer_speed = INDEXER_SPEED_DEFAULT * RPM_SCALE;
 			}
 			break;
+		default: // when remote not connected
+			sig->gimbal.yaw_ecd -= (short)(joyRightX * JOY_TO_ECD * 0.05f);
+			sig->gimbal.indexer_speed = 0 * RPM_SCALE;
+
 	}
 	switch(rcPtr->sw2){
 		case 1:
@@ -329,7 +338,8 @@ void processController(rc_info_t* rcPtr, signal_t* sig){
 			sig->gimbal.flywheel_speed = (short) (PWM_RESOLUTION * FLYWHEEL_OFF_PERCENT);
 			sig->gimbal.indexer_speed = 0 * RPM_SCALE;
 			break;
-		default: // reserve for keyboard
+		case 2: // reserve for keyboard
+		default: // when remote not connected
 			break;
 
 	}
@@ -338,20 +348,21 @@ void processController(rc_info_t* rcPtr, signal_t* sig){
 	float raw_y = joyLeftY * JOY_TO_RPM * DRIVE_SPEED_DEFAULT;
 
 	// change of angle from the original position
-	float radian = sig->gimbal.yaw_ecd / ECD_PERIOD * 2 * PI;
+	radian = sig->gimbal.yaw_ecd / ECD_PERIOD * 2 * PI;
 
 	// apply rotational matrix
-	float x = (float) (raw_x * cos(radian) - raw_y * sin(radian));
-	float y = (float) (raw_x * sin(radian) + raw_y * cos(radian));
-	sig->chassis.LF_rpm = (short) ((-y + x + baybladeRotation) * RPM_SCALE);
-	sig->chassis.RF_rpm = (short) ((y + x + baybladeRotation) * RPM_SCALE);
-	sig->chassis.LB_rpm = (short) ((-y - x + baybladeRotation) * RPM_SCALE);
-	sig->chassis.RB_rpm = (short) ((y - x +	baybladeRotation) * RPM_SCALE);
+	x = (float) (raw_x * cos(radian) - raw_y * sin(radian));
+	y = (float) (raw_x * sin(radian) + raw_y * cos(radian));
+
+	sig->chassis.LF_rpm = (short) ((y + x + baybladeRotation) * RPM_SCALE);
+	sig->chassis.RF_rpm = (short) ((-y + x + baybladeRotation) * RPM_SCALE);
+	sig->chassis.LB_rpm = (short) ((y - x + baybladeRotation) * RPM_SCALE);
+	sig->chassis.RB_rpm = (short) ((-y - x + baybladeRotation) * RPM_SCALE);
 
 }
 
-void outINF(signal_t* sig, CAN_HandleTypeDef *hcan,
-		int count) {
+void outINF(signal_t* sig, CAN_HandleTypeDef *hcan) {
+	static int imu_zeroed = 0;
 	// output variables
 	float yaw_output;
 	float pit_output;
@@ -374,7 +385,17 @@ void outINF(signal_t* sig, CAN_HandleTypeDef *hcan,
 	} else {
 		//yaw_output = yaw_ecd_cascade_ctrl(signal.gimbal.yaw_ecd_target);
 		//pit_output = pit_ecd_cascade_ctrl(signal.gimbal.pit_ecd_target);
-		yaw_output = yaw_ecd_direct_ctrl(signal.gimbal.yaw_ecd_target);
+		int yaw_centered = fabs(motors[4].ecd - YAW_ECD_DEFAULT) < 1;
+		if (!imu_zeroed){
+			yaw_output = yaw_ecd_direct_ctrl(YAW_ECD_DEFAULT);
+			if (yaw_centered){
+
+			}
+		} else {
+			float deg_target = signal.gimbal.yaw_ecd_target * (ANGLE_PERIOD / ECD_PERIOD);
+			yaw_output = yaw_imu_deg_ctrl(imu.rol, deg_target);
+		}
+
 		pit_output = pit_ecd_direct_ctrl(signal.gimbal.pit_ecd_target);
 	}
 
@@ -405,18 +426,6 @@ void outINF(signal_t* sig, CAN_HandleTypeDef *hcan,
 	//flywheel_speed = (rc.ch4 / 660.0f + 1) * 1000;
 	set_pwm_flywheel(signal.gimbal.flywheel_speed);
 
-
-	if (count%100 == 0)
-	{
-		HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
-	}
-
-	/* reset count every 10s */
-	if (count == 2000)
-	{
-		count = 0;
-	}
-	count++;
 }
 
 /* USER CODE END 0 */
@@ -467,11 +476,11 @@ int main(void)
   led_off();
   power_on();
   dbus_uart_init();
-  can_filter_init();
+  //can_filter_init();
 
   mpu_device_init();
   init_quaternion();
-  //pwm_imu_start();
+  pwm_imu_start();
 
   pwm_flywheel_start();
   pwm_buzzer_start();
@@ -487,15 +496,26 @@ int main(void)
 	mpu_get_data();
 	imu_ahrs_update();
 	imu_attitude_update();
-
-	imu_temp_pid_ctrl(imu.temp, 50.0f);
+	imu_temp_pid_ctrl(imu.temp, DESIRED_TEMPERATURE);
 
 	// process the inputs from the rc into targets for each pid module
 	//processSentry(&signal);
 	processController(&rc, &signal);
 	processCV();
 
-	outINF(&signal, &hcan1,	count);
+	//outINF(&signal, &hcan1);
+
+	if (count%100 == 0)
+	{
+		HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
+	}
+
+	/* reset count every 10s */
+	if (count == 2000)
+	{
+		count = 0;
+	}
+	count++;
 
 	HAL_Delay(DELAY_MS);
     /* USER CODE END WHILE */

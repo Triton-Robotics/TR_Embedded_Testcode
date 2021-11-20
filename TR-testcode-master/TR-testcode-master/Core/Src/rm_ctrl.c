@@ -12,6 +12,9 @@
 #include "rm_can.h"
 #include "rm_imu.h"
 
+#define YAW_MOTOR_ID 4
+#define PIT_MOTOR_ID 5
+
 const float imu_temp_PID[3] = {TEMPERATURE_PID_KP, TEMPERATURE_PID_KI, TEMPERATURE_PID_KD};
 pid_type_def imu_temp_pid;
 
@@ -20,13 +23,13 @@ pid_type_def wheels_rpm_pid[4];
 
 const float yaw_deg_imu_PID[3] = {20, 0.1, 3};
 pid_type_def yaw_deg_imu_pid;
-const float yaw_rpm_imu_PID[3] = {50, 0.1, 0};
-pid_type_def yaw_rpm_imu_pid;
+const float yaw_dps_imu_PID[3] = {50, 0.1, 0};
+pid_type_def yaw_dps_imu_pid;
 
 const float pit_deg_imu_PID[3] = {20, 0.1, 3};
 pid_type_def pit_deg_imu_pid;
-const float pit_rpm_imu_PID[3] = {50, 0.1, 0};
-pid_type_def pit_rpm_imu_pid;
+const float pit_dps_imu_PID[3] = {50, 0.1, 0};
+pid_type_def pit_dps_imu_pid;
 
 const float yaw_ecd_rpm_PID[3] = {1, 0, 0};
 pid_type_def yaw_ecd_rpm_pid;
@@ -59,13 +62,13 @@ void grand_pid_init(){
 	PID_init(&chassis_follow_pid, PID_POSITION, chassis_follow_PID, 16384, 1000);
 
 	PID_init(&yaw_deg_imu_pid, PID_POSITION, yaw_deg_imu_PID, 3200, 100);
-	PID_init(&yaw_rpm_imu_pid, PID_POSITION, yaw_rpm_imu_PID, 30000, 5000); // GM6020 output limit: 30000
+	PID_init(&yaw_dps_imu_pid, PID_POSITION, yaw_dps_imu_PID, 30000, 5000); // GM6020 output limit: 30000
 
 	PID_init(&yaw_ecd_rpm_pid, PID_POSITION, yaw_ecd_rpm_PID, 3200, 100); // GM6020 max rpm: 320
 	PID_init(&yaw_rpm_cur_pid, PID_POSITION, yaw_rpm_cur_PID, 30000, 5000);
 
 	PID_init(&pit_deg_imu_pid, PID_POSITION, pit_deg_imu_PID, 3200, 100);
-	PID_init(&pit_rpm_imu_pid, PID_POSITION, pit_rpm_imu_PID, 30000, 5000);
+	PID_init(&pit_dps_imu_pid, PID_POSITION, pit_dps_imu_PID, 30000, 5000);
 
 	PID_init(&pit_ecd_rpm_pid, PID_POSITION, pit_ecd_rpm_PID, 3200, 100);
 	PID_init(&pit_rpm_cur_pid, PID_POSITION, pit_rpm_cur_PID, 30000, 5000);
@@ -79,6 +82,8 @@ void grand_pid_init(){
 }
 
 void gimbal_pid_clear(){
+	PID_clear(&yaw_dps_imu_pid);
+	PID_clear(&pit_dps_imu_pid);
 	PID_clear(&yaw_ecd_rpm_pid);
 	PID_clear(&pit_ecd_rpm_pid);
 	PID_clear(&yaw_rpm_cur_pid);
@@ -103,52 +108,56 @@ void imu_calibration(){
 	  long ay_off_int = 0;
 	  long az_off_int = 0;
 
-	  int offset_counter = 0;
-	  int wait_for_stable = 500;
+	  int offset_counter = 400;
+	  int wait_for_stable = 400;
+	  short timeout = 400;
+
 	  set_pwm_buzzer(2000);
 	  HAL_Delay(100);
 	  set_pwm_buzzer(0);
-	  while (offset_counter < 500)
+	  while (offset_counter)
 	  {
 		  mpu_get_data();
 		  if (imu.temp < 48.0f){
 			  set_pwm_imu((unsigned short int)TEMPERATURE_PID_MAX_OUT);
 		  } else {
-			  imu_temp_pid_ctrl(imu.temp, 50.0f);
+			  imu_temp_pid_ctrl(imu.temp, DESIRED_TEMPERATURE);
 		  }
-		  /* Wait until the temperature is stable */
-		  if (abs(imu.temp - 50.0f) < 1.0f)
+		  /* Wait until the temperature is stable or timeout */
+		  if (!timeout || abs(imu.temp - DESIRED_TEMPERATURE) < 1.0f)
 		  {
-			  if (wait_for_stable == 0){
+			  if (!wait_for_stable){
 				  ax_off_int += mpu_data.ax;
 				  ay_off_int += mpu_data.ay;
 				  az_off_int += mpu_data.az;
 				  gx_off_int += mpu_data.gx;
 				  gy_off_int += mpu_data.gy;
 				  gz_off_int += mpu_data.gz;
-				  offset_counter++;
+				  offset_counter--;
 			  } else {
 				  wait_for_stable--;
 			  }
 		  }
+		  timeout--;
 		  HAL_Delay(5);
 	  }
 	  mpu_data.ax_offset= ax_off_int / 500;
 	  mpu_data.ay_offset= ay_off_int / 500;
-	  mpu_data.az_offset= az_off_int / 500 - 4096; // gravity
+	  mpu_data.az_offset= az_off_int / 500;
 	  mpu_data.gx_offset= gx_off_int / 500;
 	  mpu_data.gy_offset= gy_off_int / 500;
 	  mpu_data.gz_offset= gz_off_int / 500;
 	  set_pwm_buzzer(2000);
-	  HAL_Delay(100);
-	  set_pwm_buzzer(0);
+
 
 	  for(int i = 0; i < 400; i++){
 		  mpu_get_data();
 		  imu_ahrs_update();
 		  imu_attitude_update();
+		  imu_temp_pid_ctrl(imu.temp, DESIRED_TEMPERATURE);
 		  HAL_Delay(5);
 	  }
+	  set_pwm_buzzer(0);
 }
 
 void imu_temp_pid_ctrl(float feedback, float target){
@@ -160,53 +169,64 @@ void imu_temp_pid_ctrl(float feedback, float target){
 	set_pwm_imu((unsigned short int) imu_temp_pid.out);
 }
 
+float yaw_imu_deg_ctrl(float feedback, float target){
+	float error = get_rotation_actual_error(feedback, target, ANGLE_PERIOD);
+	PID_calc(&yaw_deg_imu_pid, 0, error);
+	return yaw_deg_imu_pid.out;
+}
+
+float yaw_imu_dps_ctrl(float feedback, float target){
+	PID_calc(&yaw_dps_imu_pid, feedback, target);
+	return yaw_dps_imu_pid.out;
+}
+
 float yaw_imu_pid_ctrl(float feedback, float target){
 	float error = get_rotation_actual_error(feedback, target, ANGLE_PERIOD);
 	if (abs(error) < 1.0f){
 		error = 0;
 	}
 	PID_calc(&yaw_deg_imu_pid, 0, error);
-	PID_calc(&yaw_rpm_imu_pid, motors[4].speed_rpm, yaw_deg_imu_pid.out);
+	PID_calc(&yaw_dps_imu_pid, motors[YAW_MOTOR_ID].speed_rpm, yaw_deg_imu_pid.out);
 #ifdef BOARD_DOWN
-	return yaw_rpm_imu_pid.out;
+	return yaw_dps_imu_pid.out;
 #else
-	return -yaw_rpm_imu_pid.out;
+	return -yaw_dps_imu_pid.out;
 #endif
 }
 
 float pit_imu_pid_ctrl(float feedback, float target){
 	float error = get_rotation_actual_error(feedback, target, ANGLE_PERIOD);
 	PID_calc(&pit_deg_imu_pid, 0, error);
-	PID_calc(&pit_rpm_imu_pid, motors[5].speed_rpm, pit_deg_imu_pid.out);
+	PID_calc(&pit_dps_imu_pid, motors[YAW_MOTOR_ID].speed_rpm, pit_deg_imu_pid.out);
 #ifdef BOARD_DOWN
-	return pit_rpm_imu_pid.out;
+	return pit_dps_imu_pid.out;
 #else
-	return -pit_rpm_imu_pid.out;
+	return -pit_dps_imu_pid.out;
 #endif
 }
 
 
 float yaw_ecd_cascade_ctrl(float target){
 
-	float feedback = motors[4].ecd;
+	float feedback = motors[YAW_MOTOR_ID].ecd;
 	float error = get_rotation_actual_error(feedback, target, ECD_PERIOD);
 	PID_calc(&yaw_ecd_rpm_pid, 0, error);
-	PID_calc(&yaw_rpm_cur_pid, motors[4].speed_rpm, yaw_ecd_rpm_pid.out);
+	PID_calc(&yaw_rpm_cur_pid, motors[YAW_MOTOR_ID].speed_rpm, yaw_ecd_rpm_pid.out);
 	return yaw_rpm_cur_pid.out;
 }
 
 
 float pit_ecd_cascade_ctrl(float target){
 
-	float feedback = motors[5].ecd;
+	float feedback = motors[PIT_MOTOR_ID].ecd;
 	float error = get_rotation_actual_error(feedback, target, ECD_PERIOD);
 	PID_calc(&pit_ecd_rpm_pid, 0, error);
-	PID_calc(&pit_rpm_cur_pid, motors[5].speed_rpm, pit_ecd_rpm_pid.out);
+	PID_calc(&pit_rpm_cur_pid, motors[PIT_MOTOR_ID].speed_rpm, pit_ecd_rpm_pid.out);
 	return pit_rpm_cur_pid.out;
 }
 
 float yaw_ecd_direct_ctrl(float target){
-	float feedback = motors[4].ecd;
+	float feedback = motors[YAW_MOTOR_ID].ecd;
 	float error = get_rotation_actual_error(feedback, target, ECD_PERIOD);
 	PID_calc(&yaw_ecd_cur_pid, 0, error);
 	return yaw_ecd_cur_pid.out;
@@ -214,7 +234,7 @@ float yaw_ecd_direct_ctrl(float target){
 
 
 float pit_ecd_direct_ctrl(float target){
-	float feedback = motors[5].ecd;
+	float feedback = motors[PIT_MOTOR_ID].ecd;
 	float error = get_rotation_actual_error(feedback, target, ECD_PERIOD);
 	PID_calc(&pit_ecd_cur_pid, 0, error);
 	return pit_ecd_cur_pid.out;
@@ -223,18 +243,18 @@ float pit_ecd_direct_ctrl(float target){
 
 
 float yaw_rpm_pid_ctrl(float target){
-	PID_calc(&yaw_rpm_cur_pid, motors[4].speed_rpm, target);
+	PID_calc(&yaw_rpm_cur_pid, motors[YAW_MOTOR_ID].speed_rpm, target);
 	return yaw_rpm_cur_pid.out;
 }
 
 float pit_rpm_pid_ctrl(float target){
-	PID_calc(&pit_rpm_cur_pid, motors[5].speed_rpm, target);
+	PID_calc(&pit_rpm_cur_pid, motors[PIT_MOTOR_ID].speed_rpm, target);
 	return pit_rpm_cur_pid.out;
 }
 
 float chassis_follow_ctrl(float target, float deadzone) {
 	deadzone = deadzone > 0 ? deadzone : -deadzone;
-	float feedback = motors[4].ecd;
+	float feedback = motors[YAW_MOTOR_ID].ecd;
 	float error = get_rotation_actual_error(feedback, target, ECD_PERIOD);
 	PID_calc(&chassis_follow_pid, 0, error);
 	return ((chassis_follow_pid.out < deadzone) && (chassis_follow_pid.out > -deadzone)) ? 0 : chassis_follow_pid.out;

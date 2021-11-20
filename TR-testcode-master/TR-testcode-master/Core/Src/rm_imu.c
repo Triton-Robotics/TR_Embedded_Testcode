@@ -363,7 +363,7 @@ uint8_t mpu_device_init(void)
 	uint8_t MPU6500_Init_Data[10][2] = {{ MPU6500_PWR_MGMT_1, 0x80 },     /* Reset Device */
 																			{ MPU6500_PWR_MGMT_1, 0x03 },     /* Clock Source - Gyro-Z */
 																			{ MPU6500_PWR_MGMT_2, 0x00 },     /* Enable Acc & Gyro */
-																			{ MPU6500_CONFIG, 0x04 },         /* LPF 41Hz */
+																			{ MPU6500_CONFIG, 0x03 },         /* LPF 41Hz */
 																			{ MPU6500_GYRO_CONFIG, 0x18 },    /* +-2000dps */
 																			{ MPU6500_ACCEL_CONFIG, 0x10 },   /* +-8G */
 																			{ MPU6500_ACCEL_CONFIG_2, 0x02 }, /* enable LowPassFilter  Set Acc LPF */
@@ -409,7 +409,7 @@ void mpu_offset_call(void)
 	mpu_data.ay_offset=mpu_data.ay_offset / 300;
 	mpu_data.az_offset=mpu_data.az_offset / 300;
 	mpu_data.gx_offset=mpu_data.gx_offset / 300;
-	mpu_data.gy_offset=mpu_data.gx_offset / 300;
+	mpu_data.gy_offset=mpu_data.gy_offset / 300;
 	mpu_data.gz_offset=mpu_data.gz_offset / 300;
 }
 
@@ -423,11 +423,11 @@ void mpu_offset_call(void)
 	*/
 void init_quaternion(void)
 {
-	int16_t hx, hy;//hz;
+	int16_t hx, hy, hz;
 
 	hx = imu.mx;
 	hy = imu.my;
-	//hz = imu.mz;
+	hz = imu.mz;
 
 	#ifdef BOARD_DOWN
 	if (hx < 0 && hy < 0)
