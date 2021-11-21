@@ -293,23 +293,52 @@ void mpu_get_data()
 {
     mpu_read_bytes(MPU6500_ACCEL_XOUT_H, mpu_buff, 14);
 
-    mpu_data.ax   = (mpu_buff[0] << 8 | mpu_buff[1]) - mpu_data.ax_offset;
-    mpu_data.ay   = (mpu_buff[2] << 8 | mpu_buff[3]) - mpu_data.ay_offset;
-    mpu_data.az   = (mpu_buff[4] << 8 | mpu_buff[5]) - mpu_data.az_offset;
+    int16_t ax   = (mpu_buff[0] << 8 | mpu_buff[1]) - mpu_data.ax_offset;
+    int16_t ay   = (mpu_buff[2] << 8 | mpu_buff[3]) - mpu_data.ay_offset;
+    int16_t az   = (mpu_buff[4] << 8 | mpu_buff[5]) - mpu_data.az_offset;
     mpu_data.temp = mpu_buff[6] << 8 | mpu_buff[7];
 
-    mpu_data.gx = ((mpu_buff[8]  << 8 | mpu_buff[9])  - mpu_data.gx_offset);
-    mpu_data.gy = ((mpu_buff[10] << 8 | mpu_buff[11]) - mpu_data.gy_offset);
-    mpu_data.gz = ((mpu_buff[12] << 8 | mpu_buff[13]) - mpu_data.gz_offset);
+    int16_t gx = ((mpu_buff[8]  << 8 | mpu_buff[9])  - mpu_data.gx_offset);
+    int16_t gy = ((mpu_buff[10] << 8 | mpu_buff[11]) - mpu_data.gy_offset);
+    int16_t gz = ((mpu_buff[12] << 8 | mpu_buff[13]) - mpu_data.gz_offset);
 
     ist8310_get_data(ist_buff);
     memcpy(&mpu_data.mx, ist_buff, 6);
 
+    int16_t mx = mpu_data.mx;
+    int16_t my = mpu_data.my;
+    int16_t mz = mpu_data.mz;
+
+//    mpu_data.ax   = az;
+//    mpu_data.ay   = ay;
+//    mpu_data.az   = -ax;
+//
+//    mpu_data.gx = gz;
+//    mpu_data.gy = gy;
+//    mpu_data.gz = -gx;
+//
+//    mpu_data.mx = mz;
+//    mpu_data.my = my;
+//    mpu_data.mz = -mx;
+
+		mpu_data.ax = ax;
+		mpu_data.ay = ay;
+		mpu_data.az = az;
+
+		mpu_data.gx = gx;
+		mpu_data.gy = gy;
+		mpu_data.gz = gz;
+
+		mpu_data.mx = mx;
+		mpu_data.my = my;
+		mpu_data.mz = mz;
+
+    // map imu data
     memcpy(&imu.ax, &mpu_data.ax, 6 * sizeof(int16_t));
 
     imu.temp = 21 + mpu_data.temp / 333.87f;
-	  /* 2000dps -> rad/s */
-	  imu.wx   = mpu_data.gx / 16.384f / 57.3f;
+	/* 2000dps -> rad/s */
+	imu.wx   = mpu_data.gx / 16.384f / 57.3f;
     imu.wy   = mpu_data.gy / 16.384f / 57.3f;
     imu.wz   = mpu_data.gz / 16.384f / 57.3f;
 
@@ -423,11 +452,11 @@ void mpu_offset_call(void)
 	*/
 void init_quaternion(void)
 {
-	int16_t hx, hy, hz;
+	int16_t hx, hy;//hz;
 
 	hx = imu.mx;
 	hy = imu.my;
-	hz = imu.mz;
+	//hz = imu.mz;
 
 	#ifdef BOARD_DOWN
 	if (hx < 0 && hy < 0)

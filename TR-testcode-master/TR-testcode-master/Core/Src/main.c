@@ -132,6 +132,7 @@ float y;
 
 signal_t signal;
 
+float imu_yaw_offset = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -389,11 +390,11 @@ void outINF(signal_t* sig, CAN_HandleTypeDef *hcan) {
 		if (!imu_zeroed){
 			yaw_output = yaw_ecd_direct_ctrl(YAW_ECD_DEFAULT);
 			if (yaw_centered){
-
+				imu_yaw_offset = YAW_ECD_DEFAULT * (ANGLE_PERIOD / ECD_PERIOD) - imu.yaw;
 			}
 		} else {
 			float deg_target = signal.gimbal.yaw_ecd_target * (ANGLE_PERIOD / ECD_PERIOD);
-			yaw_output = yaw_imu_deg_ctrl(imu.rol, deg_target);
+			yaw_output = yaw_imu_deg_ctrl(imu.yaw + imu_yaw_offset, deg_target);
 		}
 
 		pit_output = pit_ecd_direct_ctrl(signal.gimbal.pit_ecd_target);
@@ -477,13 +478,14 @@ int main(void)
   power_on();
   dbus_uart_init();
   //can_filter_init();
+  pwm_imu_start();
+  pwm_buzzer_start();
 
   mpu_device_init();
   init_quaternion();
-  pwm_imu_start();
 
   pwm_flywheel_start();
-  pwm_buzzer_start();
+
   grand_pid_init();
   //imu_calibration();
 
